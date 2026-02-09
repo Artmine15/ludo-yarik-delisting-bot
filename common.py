@@ -94,6 +94,20 @@ def parse_article_content(html_content, url):
         logger.warning(f"Parser not implemented for URL: {url}")
         return "⚠️ <b>Тикеры не найдены</b>", "См. анонс", "См. анонс"
 
+def format_delisting_message(exchange_name, tickers_str, date_str, time_str, url, is_test=False):
+    """Formats a standardized delisting message for Telegram."""
+    if is_test:
+        header = f"🧪 <b>TEST {exchange_name.upper()} DELISTING</b> 🧪"
+    else:
+        header = f"🚨 <b>{exchange_name.upper()} DELISTING</b>"
+        
+    return (
+        f"{header}\n\n"
+        f"🪙 Монеты: {tickers_str}\n"
+        f"📅 Дата: {date_str}\n"
+        f"🕒 Время: {time_str}\n\n"
+        f"🔗 <a href='{url}'>Читать анонс</a>"
+    )
 
 def get_processed_ids(state_file_name):
     """Load ID list of handled announcements in S3."""

@@ -12,6 +12,7 @@ from common import (
     get_processed_ids,
     save_processed_ids,
     send_telegram_notification,
+    format_delisting_message,
     logger
 )
 
@@ -38,12 +39,8 @@ async def test_notification(payload: TestPayload):
     
     tickers_str, date_str, time_str = parse_article_content(payload.html_content, payload.url)
     
-    message_to_send = (
-        f"🧪 <b>TEST BINANCE DELISTING</b> 🧪\n\n"
-        f"🪙 Монеты: {tickers_str}\n"
-        f"📅 Дата: {date_str}\n"
-        f"🕒 Время: {time_str}\n\n"
-        f"🔗 <a href='{payload.url}'>Читать анонс</a>"
+    message_to_send = format_delisting_message(
+        "BINANCE", tickers_str, date_str, time_str, payload.url, is_test=True
     )
     
     send_telegram_notification(message_to_send)
@@ -78,12 +75,8 @@ def process_binance_message(data, processed_ids_list, processed_ids_set):
                     tickers_str, date_str, time_str = parse_article_content(response.text, link)
                     
                     # Format and send message
-                    message_to_send = (
-                        f"🚨 <b>BINANCE DELISTING</b>\n\n"
-                        f"🪙 Монеты: {tickers_str}\n"
-                        f"📅 Дата: {date_str}\n"
-                        f"🕒 Время: {time_str}\n\n"
-                        f"🔗 <a href='{link}'>Читать анонс</a>"
+                    message_to_send = format_delisting_message(
+                        "BINANCE", tickers_str, date_str, time_str, link
                     )
                     
                     send_telegram_notification(message_to_send)

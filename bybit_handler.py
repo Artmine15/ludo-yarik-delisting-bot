@@ -7,6 +7,7 @@ from common import (
     get_processed_ids,
     save_processed_ids,
     send_telegram_notification,
+    format_delisting_message,
     logger
 )
 
@@ -56,12 +57,8 @@ def handler(event, context):
 
         tickers_str, date_str, time_str = parse_article_content(html_content, url)
         
-        message_to_send = (
-            f"🧪 <b>TEST BYBIT DELISTING</b> 🧪\n\n"
-            f"🪙 Монеты: {tickers_str}\n"
-            f"📅 Дата: {date_str}\n"
-            f"🕒 Время: {time_str}\n\n"
-            f"🔗 <a href='{url}'>Читать анонс</a>"
+        message_to_send = format_delisting_message(
+            "BYBIT", tickers_str, date_str, time_str, url, is_test=True
         )
         
         send_telegram_notification(message_to_send)
@@ -93,12 +90,8 @@ def handler(event, context):
                 tickers_str, date_str, time_str = parse_article_content(response.text, ann['url'])
 
                 # Format and send message
-                message = (
-                    f"⚠️ <b>BYBIT DELISTING</b>\n\n"
-                    f"🪙 Монеты: {tickers_str}\n"
-                    f"📅 Дата: {date_str}\n"
-                    f"🕒 Время: {time_str}\n\n"
-                    f"🔗 <a href='{ann['url']}'>Читать анонс</a>"
+                message = format_delisting_message(
+                    "BYBIT", tickers_str, date_str, time_str, ann['url']
                 )
                 send_telegram_notification(message)
 
