@@ -49,7 +49,10 @@ def _parse_binance_html(soup):
     date_match = re.search(r'(\d{4}-\d{2}-\d{2})', article_text)
     time_match = re.search(r'(\d{2}:\d{2})\s*\(UTC\)', article_text)
 
-    formatted_tickers = ', '.join(sorted(list(tickers))) if tickers else "⚠️ <b>Тикеры не найдены</b>"
+    if tickers:
+        formatted_tickers = ', '.join([f"<code>${t}</code>" for t in sorted(list(tickers))])
+    else:
+        formatted_tickers = "⚠️ <b>Тикеры не найдены</b>"
     formatted_date = date_match.group(1) if date_match else "См. анонс"
     formatted_time = f"{time_match.group(1)} (UTC)" if time_match else "См. анонс"
     
@@ -74,7 +77,10 @@ def _parse_bybit_html(soup):
     date_match = re.search(r'(\d{4}-\d{2}-\d{2}|\w+\s\d{1,2},\s\d{4})', article_text)
     time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM)?\s*\(?UTC\)?)', article_text)
 
-    formatted_tickers = ', '.join(sorted(list(all_tickers))) if all_tickers else "⚠️ <b>Тикеры не найдены</b>"
+    if all_tickers:
+        formatted_tickers = ', '.join([f"<code>${t}</code>" for t in sorted(list(all_tickers))])
+    else:
+        formatted_tickers = "⚠️ <b>Тикеры не найдены</b>"
     formatted_date = date_match.group(1) if date_match else "См. анонс"
     formatted_time = time_match.group(1) if time_match else "См. анонс"
     

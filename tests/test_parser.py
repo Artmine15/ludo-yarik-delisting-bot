@@ -31,12 +31,12 @@ test_cases = [
     (
         BINANCE_HTML,
         "https://www.binance.com/en/support/announcement/test-1",
-        ("ANT, DAI", "2025-02-28", "03:00 (UTC)")
+        ("<code>$ANT</code>, <code>$DAI</code>", "2025-02-28", "03:00 (UTC)")
     ),
     (
         BYBIT_HTML,
         "https://announcements.bybit.com/en/article/test-2",
-        ("CUDIS, TEST", "Feb 11, 2026", "9AM UTC")
+        ("<code>$CUDIS</code>, <code>$TEST</code>", "Feb 11, 2026", "9AM UTC")
     ),
     (
         "<html><body>No info here</body></html>",
