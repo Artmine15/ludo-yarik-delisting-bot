@@ -3,7 +3,7 @@ import logging
 import requests
 from common import (
     get_headers,
-    parse_announcement_data,
+    parse_article_content,
     get_processed_ids,
     save_processed_ids,
     send_telegram_notification,
@@ -12,13 +12,13 @@ from common import (
 
 STATE_FILE = "bybit_state.json"
 
-def check_bybit_announcements():
-    """Announcements check for Bybit."""
-    url = "https://api.bybit.com/v5/announcements/index?category=delistings&limit=10"
-    results = []
+def get_bybit_announcements():
+    """Fetches a list of delisting announcement summaries from Bybit."""
+    api_url = "https://api.bybit.com/v5/announcements/index?category=delistings&limit=10"
+    announcements = []
     
     try:
-        response = requests.get(url, headers=get_headers(), timeout=15)
+        response = requests.get(api_url, headers=get_headers(), timeout=15)
         if not response.ok:
             logger.error(f"Bybit API error: {response.status_code}")
             return []
@@ -27,38 +27,41 @@ def check_bybit_announcements():
         
         if data.get('retCode') == 0:
             for item in data['result']['list']:
-                title = item['title']
-                tickers_str, date_str, time_str = parse_announcement_data(title)
-                
-                results.append({
-                    "id": f"bybit_{item['url']}",
-                    "message": (
-                        f"⚠️ <b>BYBIT DELISTING</b>\n\n"
-                        f"🪙 Монеты: {tickers_str}\n"
-                        f"📅 Дата: {date_str}\n"
-                        f"🕒 Время: {time_str}\n\n"
-                        f"🔗 <a href='{item['url']}'>Читать анонс</a>"
-                    )
-                })
+                title = item.get('title', '')
+                keywords = ["delist", "removal", "cease"]
+                if any(word in title.lower() for word in keywords):
+                    announcements.append({
+                        "title": title,
+                        "url": item.get('url')
+                    })
     except Exception as error:
-        logger.error(f"Error while checking Bybit: {error}")
+        logger.error(f"Error while fetching Bybit announcements: {error}")
         
-    return results
+    return announcements
 
 def handler(event, context):
     # Check if this is a manual test invocation
-    # The event payload should be a JSON like: {"is_test": true}
     if isinstance(event, dict) and event.get('is_test'):
         logger.info("Handling manual test for Bybit handler.")
-        test_title = "Gentle Reminder: Bybit Will Delist the ABC/USDT, XYZ/BTC Spot Trading Pairs"
-        tickers_str, date_str, time_str = parse_announcement_data(test_title)
+        
+        html_content = event.get('html_content')
+        url = event.get('url')
+
+        if not html_content or not url:
+            logger.warning("Test invocation is missing 'html_content' or 'url' in payload.")
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"status": "error", "message": "Missing 'html_content' or 'url' for test."})
+            }
+
+        tickers_str, date_str, time_str = parse_article_content(html_content, url)
         
         message_to_send = (
             f"🧪 <b>TEST BYBIT DELISTING</b> 🧪\n\n"
             f"🪙 Монеты: {tickers_str}\n"
             f"📅 Дата: {date_str}\n"
             f"🕒 Время: {time_str}\n\n"
-            f"🔗 <a href='https://www.bybit.com/en/help-center/announcements'>Читать анонс</a>"
+            f"🔗 <a href='{url}'>Читать анонс</a>"
         )
         
         send_telegram_notification(message_to_send)
@@ -72,20 +75,41 @@ def handler(event, context):
     processed_ids_list = get_processed_ids(STATE_FILE)
     processed_ids_set = set(processed_ids_list)
     
-    bybit_news = check_bybit_announcements()
-    
+    announcements = get_bybit_announcements()
     new_alerts_count = 0
     
-    for news_item in reversed(bybit_news):
-        news_id = news_item['id']
+    for ann in reversed(announcements):
+        news_id = f"bybit_{ann['url']}"
         
         if news_id not in processed_ids_set:
-            send_telegram_notification(news_item['message'])
-            
-            processed_ids_list.append(news_id)
-            processed_ids_set.add(news_id)
-            new_alerts_count += 1
-    
+            try:
+                # Fetch article content
+                response = requests.get(ann['url'], headers=get_headers(), timeout=20)
+                if not response.ok:
+                    logger.error(f"Failed to fetch Bybit article {ann['url']}: Status {response.status_code}")
+                    continue
+
+                # Parse content to get details
+                tickers_str, date_str, time_str = parse_article_content(response.text, ann['url'])
+
+                # Format and send message
+                message = (
+                    f"⚠️ <b>BYBIT DELISTING</b>\n\n"
+                    f"🪙 Монеты: {tickers_str}\n"
+                    f"📅 Дата: {date_str}\n"
+                    f"🕒 Время: {time_str}\n\n"
+                    f"🔗 <a href='{ann['url']}'>Читать анонс</a>"
+                )
+                send_telegram_notification(message)
+
+                # Update state
+                processed_ids_list.append(news_id)
+                processed_ids_set.add(news_id)
+                new_alerts_count += 1
+
+            except Exception as e:
+                logger.error(f"Error processing Bybit announcement {ann['url']}: {e}")
+
     if new_alerts_count > 0:
         updated_state = processed_ids_list[-50:]
         save_processed_ids(updated_state, STATE_FILE)
@@ -94,7 +118,7 @@ def handler(event, context):
             "body": json.dumps({"status": "success", "sent": new_alerts_count})
         }
     
-    logger.info("No new anouncements for Bybit.")
+    logger.info("No new announcements for Bybit.")
     return {
         "statusCode": 200,
         "body": json.dumps({"status": "no_new_alerts"})

@@ -1,47 +1,62 @@
 import pytest
-from common import parse_announcement_data
+from common import parse_article_content
 
-# A list of test cases, each with a title and the expected output
+# Sample HTML content for Binance
+BINANCE_HTML = """
+<html><body>
+    <h1>Notice on the Removal of Spot Trading Pairs - 2025-02-28</h1>
+    <p>Fellow Binancians,</p>
+    <p>At Binance, we periodically review each digital asset we list to ensure that it continues to meet the high level of standard we expect. When a coin or token no longer meets this standard, or the industry changes, we conduct a more in-depth review and potentially delist it. We believe this best protects all our users.</p>
+    <p>Based on our most recent reviews, we have decided to delist and cease trading on all spot trading pairs for the following token(s) at <strong>2025-02-28 03:00 (UTC)</strong>:</p>
+    <ul>
+        <li><strong>Aragon (ANT)</strong></li>
+        <li><strong>Multi-collateral Dai (DAI)</strong></li>
+    </ul>
+    <p>The exact trading pairs being removed are: <strong>ANT/BTC, ANT/USDT, DAI/BUSD.</strong></p>
+</body></html>
+"""
+
+# Sample HTML content for Bybit
+BYBIT_HTML = """
+<html><head><title>Delisting of CUDISUSDT Perpetual Contract</title></head>
+<body>
+    <p>We will be delisting the <strong>CUDISUSDT</strong> Perpetual Contract at <strong>9AM UTC on Feb 11, 2026</strong>.</p>
+    <p>Another pair is TEST/USDT</p>
+</body></html>
+"""
+
+# Test cases for the new HTML parser
+# Each case: (html_content, url, expected_output)
 test_cases = [
     (
-        "Binance Will Delist AION, MIR and ANC on 2022-11-28",
-        ("AION, MIR, ANC", "2022-11-28", "См. анонс")
+        BINANCE_HTML,
+        "https://www.binance.com/en/support/announcement/test-1",
+        ("ANT, DAI", "2025-02-28", "03:00 (UTC)")
     ),
     (
-        "Notice on the Delisting of Multiple Trading Pairs (2023-01-20)",
-        ("⚠️ <b>Тикеры не найдены</b>", "2023-01-20", "См. анонс")
+        BYBIT_HTML,
+        "https://announcements.bybit.com/en/article/test-2",
+        ("CUDIS, TEST", "Feb 11, 2026", "9AM UTC")
     ),
     (
-        "Binance to Delist DNT, NBS and BTG on 2023-02-09 09:00 (UTC)",
-        ("DNT, NBS, BTG", "2023-02-09", "09:00 (UTC)")
-    ),
-    (
-        "Gentle Reminder: Bybit Will Delist the RSR/BTC Spot Trading Pair",
-        ("RSR", "См. анонс", "См. анонс")
-    ),
-    (
-        "Binance Futures Will Delist ALGO/BUSD and LUNA/BUSD Perpetual Contracts",
-        ("ALGO, LUNA", "См. анонс", "См. анонс")
-    ),
-    (
-        "Delisting of PNT/USDT",
-        ("PNT", "См. анонс", "См. анонс")
-    ),
-    (
-        "Notice Regarding the Removal of LITH/USDT from Spot Trading",
-        ("LITH", "См. анонс", "См. анонс")
+        "<html><body>No info here</body></html>",
+        "https://www.binance.com/test-3",
+        ("⚠️ <b>Тикеры не найдены</b>", "См. анонс", "См. анонс")
     )
 ]
 
-@pytest.mark.parametrize("title, expected", test_cases)
-def test_parse_announcement_data(title, expected):
+@pytest.mark.parametrize("html, url, expected", test_cases)
+def test_parse_article_content(html, url, expected):
     """
-    Tests the parse_announcement_data function with various title formats.
+    Tests the parse_article_content function with various HTML contents.
     """
-    assert parse_announcement_data(title) == expected
+    assert parse_article_content(html, url) == expected
 
-def test_parse_empty_title():
+def test_unknown_url_parser():
     """
-    Tests the parser with an empty string.
+    Tests that the parser returns a default value for an unknown URL.
     """
-    assert parse_announcement_data("") == ("⚠️ <b>Тикеры не найдены</b>", "См. анонс", "См. анонс")
+    html = "<html><body><strong>GIBBERISH/BTC</strong></body></html>"
+    url = "https://some-other-exchange.com"
+    expected = ("⚠️ <b>Тикеры не найдены</b>", "См. анонс", "См. анонс")
+    assert parse_article_content(html, url) == expected

@@ -1,20 +1,23 @@
 import asyncio
 import json
 import logging
+import requests
 import websockets
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
 from common import (
-    parse_announcement_data,
+    get_headers,
+    parse_article_content,
     get_processed_ids,
     save_processed_ids,
     send_telegram_notification,
     logger
 )
 
-class TestNotification(BaseModel):
-    title: str
+class TestPayload(BaseModel):
+    html_content: str
+    url: str
 
 app = FastAPI()
 
@@ -26,21 +29,21 @@ async def health_check():
     return {"status": "ok"}
 
 @app.post("/test-notification")
-async def test_notification(notification: TestNotification):
+async def test_notification(payload: TestPayload):
     """
-    Receives a test title, formats a message, and sends it to Telegram.
-    This is for manual end-to-end testing purposes.
+    Receives a test HTML content and URL, parses it, and sends a message.
+    This is for manual end-to-end testing of the parser and notifier.
     """
-    logger.info(f"Received test notification with title: {notification.title}")
+    logger.info(f"Received test notification for URL: {payload.url}")
     
-    tickers_str, date_str, time_str = parse_announcement_data(notification.title)
+    tickers_str, date_str, time_str = parse_article_content(payload.html_content, payload.url)
     
     message_to_send = (
         f"🧪 <b>TEST BINANCE DELISTING</b> 🧪\n\n"
         f"🪙 Монеты: {tickers_str}\n"
         f"📅 Дата: {date_str}\n"
         f"🕒 Время: {time_str}\n\n"
-        f"🔗 <a href='https://www.binance.com/en/support/announcement/trading-pairs'>Читать анонс</a>"
+        f"🔗 <a href='{payload.url}'>Читать анонс</a>"
     )
     
     send_telegram_notification(message_to_send)
@@ -64,24 +67,37 @@ def process_binance_message(data, processed_ids_list, processed_ids_set):
             news_id = f"binance_ws_{article_id}"
 
             if news_id not in processed_ids_set:
-                tickers_str, date_str, time_str = parse_announcement_data(title)
-                
-                message_to_send = (
-                    f"🚨 <b>BINANCE DELISTING</b>\n\n"
-                    f"🪙 Монеты: {tickers_str}\n"
-                    f"📅 Дата: {date_str}\n"
-                    f"🕒 Время: {time_str}\n\n"
-                    f"🔗 <a href='{link}'>Читать анонс</a>"
-                )
-                
-                send_telegram_notification(message_to_send)
-                logger.info(f"Sent notification for {news_id}")
+                try:
+                    # Fetch article content
+                    response = requests.get(link, headers=get_headers(), timeout=20)
+                    if not response.ok:
+                        logger.error(f"Failed to fetch Binance article {link}: Status {response.status_code}")
+                        return
 
-                processed_ids_list.append(news_id)
-                processed_ids_set.add(news_id)
-                
-                updated_state = processed_ids_list[-50:]
-                save_processed_ids(updated_state, STATE_FILE)
+                    # Parse content to get details
+                    tickers_str, date_str, time_str = parse_article_content(response.text, link)
+                    
+                    # Format and send message
+                    message_to_send = (
+                        f"🚨 <b>BINANCE DELISTING</b>\n\n"
+                        f"🪙 Монеты: {tickers_str}\n"
+                        f"📅 Дата: {date_str}\n"
+                        f"🕒 Время: {time_str}\n\n"
+                        f"🔗 <a href='{link}'>Читать анонс</a>"
+                    )
+                    
+                    send_telegram_notification(message_to_send)
+                    logger.info(f"Sent notification for {news_id}")
+
+                    # Update state
+                    processed_ids_list.append(news_id)
+                    processed_ids_set.add(news_id)
+                    
+                    updated_state = processed_ids_list[-50:]
+                    save_processed_ids(updated_state, STATE_FILE)
+
+                except Exception as e:
+                    logger.error(f"Error processing Binance announcement {link}: {e}")
             else:
                 logger.info(f"Already processed announcement {news_id}")
 
@@ -109,6 +125,9 @@ async def binance_listener():
                     try:
                         message = await websocket.recv()
                         data = json.loads(message)
+                        # Running synchronous code in an async context.
+                        # For high-performance applications, consider using an async HTTP client (e.g., httpx)
+                        # or running requests in a thread pool executor.
                         process_binance_message(data, processed_ids_list, processed_ids_set)
 
                     except websockets.exceptions.ConnectionClosed:

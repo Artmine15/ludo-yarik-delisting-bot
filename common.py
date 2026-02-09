@@ -4,6 +4,7 @@ import re
 import logging
 import boto3
 import requests
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -33,45 +34,82 @@ def get_headers():
         'Upgrade-Insecure-Requests': '1'
     }
 
-def parse_announcement_data(title):
-    """
-    Parses the title to extract tickers, date, and time.
-    Improved readability and reliability.
-    """
-    exclude_words = {
-        'BINANCE', 'BYBIT', 'DELIST', 'DELISTING', 'LISTING', 'NOTICE', 
-        'REMOVAL', 'SUPPORT', 'ANNOUNCEMENT', 'UTC', 'USDT', 'USDC', 
-        'BTC', 'ETH', 'BUSD', 'FDUSD', 'SPOT', 'MARGIN', 'TOKEN'
-    }
-    
-    clean_title = re.sub(r'[^\w\s]', ' ', title)
-    raw_tickers = re.findall(r'\b[A-Z0-9]{2,10}\b', clean_title)
-    
-    tickers = []
-    for word in raw_tickers:
-        if word not in exclude_words and word not in tickers:
-            tickers.append(word)
-    
-    date_pattern = r'(\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s\d{4}\b)'
-    date_match = re.search(date_pattern, title, re.IGNORECASE)
-    
-    time_pattern = r'(\d{1,2}:\d{2}\s?(?:UTC)?)'
-    time_match = re.search(time_pattern, title, re.IGNORECASE)
-    
-    formatted_tickers = f"{', '.join(tickers)}" if tickers else "⚠️ <b>Тикеры не найдены</b>"
-    formatted_date = date_match.group(0) if date_match else "См. анонс"
-    formatted_time = time_match.group(0) if time_match else "См. анонс"
+def _parse_binance_html(soup):
+    """Helper function to parse Binance announcement HTML."""
+    tickers = set()
+    # Find all strong tags, as they often contain tickers.
+    for strong_tag in soup.find_all('strong'):
+        text = strong_tag.get_text(strip=True)
+        # Regex to find trading pairs like ABC/XYZ
+        found_pairs = re.findall(r'\b[A-Z0-9]{2,10}/[A-Z0-9]{2,10}\b', text)
+        for pair in found_pairs:
+            # Add the base asset of the pair
+            tickers.add(pair.split('/')[0])
+
+    article_text = soup.get_text()
+    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', article_text)
+    time_match = re.search(r'(\d{2}:\d{2})\s*\(UTC\)', article_text)
+
+    formatted_tickers = ', '.join(sorted(list(tickers))) if tickers else "⚠️ <b>Тикеры не найдены</b>"
+    formatted_date = date_match.group(1) if date_match else "См. анонс"
+    formatted_time = f"{time_match.group(1)} (UTC)" if time_match else "См. анонс"
     
     return formatted_tickers, formatted_date, formatted_time
+
+def _parse_bybit_html(soup):
+    """Helper function to parse Bybit announcement HTML."""
+    article_text = soup.get_text()
+    
+    # Bybit often mentions the pair in the title or first paragraph.
+    # A simple regex for pairs is a good starting point.
+    tickers = set(re.findall(r'\b([A-Z0-9]{2,10})/([A-Z0-9]{2,10})\b', article_text))
+    # For contract names like 'CUDISUSDT'
+    contract_tickers = set(re.findall(r'Delisting of (\w+)\s', article_text, re.IGNORECASE))
+    
+    all_tickers = {pair[0] for pair in tickers}
+    for contract in contract_tickers:
+        # Avoid adding common currency names if they are part of the contract name
+        if contract.upper() not in ['USDT', 'USDC', 'BTC', 'PERPETUAL', 'CONTRACT']:
+             all_tickers.add(contract.upper())
+
+    date_match = re.search(r'(\d{4}-\d{2}-\d{2}|\w+\s\d{1,2},\s\d{4})', article_text)
+    time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM)?\s*\(?UTC\)?)', article_text)
+
+    formatted_tickers = ', '.join(sorted(list(all_tickers))) if all_tickers else "⚠️ <b>Тикеры не найдены</b>"
+    formatted_date = date_match.group(1) if date_match else "См. анонс"
+    formatted_time = time_match.group(1) if time_match else "См. анонс"
+    
+    return formatted_tickers, formatted_date, formatted_time
+
+def parse_article_content(html_content, url):
+    """
+    Parses the HTML content of a delisting announcement to extract tickers, date, and time.
+    """
+    soup = BeautifulSoup(html_content, 'lxml')
+    
+    if "binance.com" in url:
+        return _parse_binance_html(soup)
+    elif "bybit.com" in url:
+        return _parse_bybit_html(soup)
+    else:
+        logger.warning(f"Parser not implemented for URL: {url}")
+        return "⚠️ <b>Тикеры не найдены</b>", "См. анонс", "См. анонс"
+
 
 def get_processed_ids(state_file_name):
     """Load ID list of handled announcements in S3."""
     try:
         s3_object = s3_client.get_object(Bucket=BUCKET_NAME, Key=state_file_name)
         file_content = s3_object['Body'].read().decode('utf-8')
+        # Handle empty file gracefully
+        if not file_content:
+            return []
         return json.loads(file_content)
     except s3_client.exceptions.NoSuchKey:
         logger.info(f"State file {state_file_name} not found. New file will be created.")
+        return []
+    except json.JSONDecodeError:
+        logger.warning(f"State file {state_file_name} is empty or malformed. Starting fresh.")
         return []
     except Exception as error:
         logger.warning(f"State loading error from {state_file_name}: {error}")
