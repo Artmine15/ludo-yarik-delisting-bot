@@ -1,10 +1,9 @@
 import os
 import json
-import re
 import logging
 import boto3
 import requests
-from bs4 import BeautifulSoup
+from parser import parse_article_content as parse_content
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -33,72 +32,15 @@ def get_headers():
         'Upgrade-Insecure-Requests': '1'
     }
 
-def _parse_binance_html(soup):
-    """Helper function to parse Binance announcement HTML."""
-    tickers = set()
-    # Find all strong tags, as they often contain tickers.
-    for strong_tag in soup.find_all('strong'):
-        text = strong_tag.get_text(strip=True)
-        # Regex to find trading pairs like ABC/XYZ
-        found_pairs = re.findall(r'\b[A-Z0-9]{2,10}/[A-Z0-9]{2,10}\b', text)
-        for pair in found_pairs:
-            # Add the base asset of the pair
-            tickers.add(pair.split('/')[0])
-
-    article_text = soup.get_text()
-    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', article_text)
-    time_match = re.search(r'(\d{2}:\d{2})\s*\(UTC\)', article_text)
-
-    if tickers:
-        formatted_tickers = ', '.join([f"<code>${t}</code>" for t in sorted(list(tickers))])
-    else:
-        formatted_tickers = "⚠️ <b>Тикеры не найдены</b>"
-    formatted_date = date_match.group(1) if date_match else "См. анонс"
-    formatted_time = f"{time_match.group(1)} (UTC)" if time_match else "См. анонс"
-    
-    return formatted_tickers, formatted_date, formatted_time
-
-def _parse_bybit_html(soup):
-    """Helper function to parse Bybit announcement HTML."""
-    article_text = soup.get_text()
-    
-    # Bybit often mentions the pair in the title or first paragraph.
-    # A simple regex for pairs is a good starting point.
-    tickers = set(re.findall(r'\b([A-Z0-9]{2,10})/([A-Z0-9]{2,10})\b', article_text))
-    # For contract names like 'CUDISUSDT'
-    contract_tickers = set(re.findall(r'Delisting of (\w+)\s', article_text, re.IGNORECASE))
-    
-    all_tickers = {pair[0] for pair in tickers}
-    for contract in contract_tickers:
-        # Avoid adding common currency names if they are part of the contract name
-        if contract.upper() not in ['USDT', 'USDC', 'BTC', 'PERPETUAL', 'CONTRACT']:
-             all_tickers.add(contract.upper())
-
-    date_match = re.search(r'(\d{4}-\d{2}-\d{2}|\w+\s\d{1,2},\s\d{4})', article_text)
-    time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM)?\s*\(?UTC\)?)', article_text)
-
-    if all_tickers:
-        formatted_tickers = ', '.join([f"<code>${t}</code>" for t in sorted(list(all_tickers))])
-    else:
-        formatted_tickers = "⚠️ <b>Тикеры не найдены</b>"
-    formatted_date = date_match.group(1) if date_match else "См. анонс"
-    formatted_time = time_match.group(1) if time_match else "См. анонс"
-    
-    return formatted_tickers, formatted_date, formatted_time
-
 def parse_article_content(html_content, url):
     """
-    Parses the HTML content of a delisting announcement to extract tickers, date, and time.
+    Parses the HTML content of a delisting announcement by calling the centralized parser.
     """
-    soup = BeautifulSoup(html_content, 'lxml')
+    if "binance.com" in url or "bybit.com" in url:
+        return parse_content(html_content, url)
     
-    if "binance.com" in url:
-        return _parse_binance_html(soup)
-    elif "bybit.com" in url:
-        return _parse_bybit_html(soup)
-    else:
-        logger.warning(f"Parser not implemented for URL: {url}")
-        return "⚠️ <b>Тикеры не найдены</b>", "См. анонс", "См. анонс"
+    logger.warning(f"Parser not implemented for URL: {url}")
+    return "⚠️ <b>Тикеры не найдены</b>", "<i>См. анонс</i>", "<i>См. анонс</i>"
 
 def format_delisting_message(exchange_name, tickers_str, date_str, time_str, url, is_test=False):
     """Formats a standardized delisting message for Telegram."""
