@@ -46,6 +46,29 @@ def check_bybit_announcements():
     return results
 
 def handler(event, context):
+    # Check if this is a manual test invocation
+    # The event payload should be a JSON like: {"is_test": true}
+    if isinstance(event, dict) and event.get('is_test'):
+        logger.info("Handling manual test for Bybit handler.")
+        test_title = "Gentle Reminder: Bybit Will Delist the ABC/USDT, XYZ/BTC Spot Trading Pairs"
+        tickers_str, date_str, time_str = parse_announcement_data(test_title)
+        
+        message_to_send = (
+            f"🧪 <b>TEST BYBIT DELISTING</b> 🧪\n\n"
+            f"🪙 Монеты: {tickers_str}\n"
+            f"📅 Дата: {date_str}\n"
+            f"🕒 Время: {time_str}\n\n"
+            f"🔗 <a href='https://www.bybit.com/en/help-center/announcements'>Читать анонс</a>"
+        )
+        
+        send_telegram_notification(message_to_send)
+        
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"status": "manual_test_notification_sent"})
+        }
+
+    # Regular execution logic
     processed_ids_list = get_processed_ids(STATE_FILE)
     processed_ids_set = set(processed_ids_list)
     
