@@ -11,8 +11,7 @@ logger.setLevel(logging.INFO)
 
 # --- Environment Variables ---
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-CHAT_IDS_STRING = os.getenv('CHAT_IDS', '')
-CHAT_IDS = [chat_id.strip() for chat_id in CHAT_IDS_STRING.split(',') if chat_id.strip()]
+CHAT_IDS_STRING = os.getenv('CHAT_IDS', '[]')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
@@ -127,23 +126,41 @@ def save_processed_ids(processed_ids, state_file_name):
         logger.error(f"Error saving state to S3 in {state_file_name}: {error}")
 
 def send_telegram_notification(message):
-    """Send message to all predefined chats."""
-    if not BOT_TOKEN or not CHAT_IDS:
+    """Send message to all predefined chats and topics."""
+    if not BOT_TOKEN or not CHAT_IDS_STRING:
         logger.error("BOT_TOKEN or CHAT_IDS not found.")
+        return
+        
+    try:
+        chat_targets = json.loads(CHAT_IDS_STRING)
+        if not isinstance(chat_targets, list):
+            logger.error("CHAT_IDS is not a valid JSON list.")
+            return
+    except json.JSONDecodeError:
+        logger.error("Failed to parse CHAT_IDS. Ensure it is a valid JSON string.")
         return
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     
-    for chat_id in CHAT_IDS:
+    for target in chat_targets:
+        payload = {
+            "text": message, 
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
+        }
+        
         try:
-            payload = {
-                "chat_id": chat_id, 
-                "text": message, 
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True
-            }
+            if isinstance(target, (str, int)):
+                payload['chat_id'] = target
+            elif isinstance(target, dict) and 'chat_id' in target and 'message_thread_id' in target:
+                payload['chat_id'] = target['chat_id']
+                payload['message_thread_id'] = target['message_thread_id']
+            else:
+                logger.warning(f"Invalid target in CHAT_IDS: {target}")
+                continue
+
             response = requests.post(url, json=payload, timeout=10)
             if not response.ok:
-                logger.error(f"Telegram error {response.status_code}: {response.text}")
+                logger.error(f"Telegram error for target {target}: {response.status_code} - {response.text}")
         except Exception as error:
-            logger.error(f"Error sending Telegram message in chat {chat_id}: {error}")
+            logger.error(f"Error sending Telegram message for target {target}: {error}")
