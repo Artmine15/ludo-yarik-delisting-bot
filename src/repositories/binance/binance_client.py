@@ -5,7 +5,7 @@ import json
 from typing import Optional, Callable
 
 # Public endpoint for general announcements (no API keys required for this stream)
-BINANCE_WS_PUBLIC_BASE = "wss://://stream.binance.com"  # Corrected public endpoint
+BINANCE_WS_PUBLIC_BASE = "wss://stream.binance.com"  # Corrected public endpoint
 # Reconnection interval in seconds
 RECONNECT_INTERVAL = 5
 # PING interval is handled by websockets automatically; no explicit PING messages needed for public streams usually
