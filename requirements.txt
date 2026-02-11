@@ -3,7 +3,3 @@ requests
 websockets
 fastapi
 uvicorn
-pytest
-pytest-mock
-beautifulsoup4
-lxml
