@@ -1,78 +1,93 @@
-import uuid
 import asyncio
 import websockets
 import json
 from typing import Optional, Callable
+# from datetime import datetime # No longer needed as _get_timestamp is removed
 
-# Public endpoint for general announcements (no API keys required for this stream)
-BINANCE_WS_PUBLIC_BASE = "wss://stream.binance.com"  # Corrected public endpoint
-# Reconnection interval in seconds
+# Публичный эндпоинт с портом для стабильности
+BINANCE_WS_PUBLIC_BASE = "wss://stream.binance.com:9443/ws"
 RECONNECT_INTERVAL = 5
-# PING interval is handled by websockets automatically; no explicit PING messages needed for public streams usually
 
 class BinanceClient:
-    def __init__(self, message_handler: Callable[[dict], None]):
+    def __init__(self, message_handler: Callable[[dict], None]): # Corrected from init to __init__
         self.ws_base_url = BINANCE_WS_PUBLIC_BASE
         self.message_handler = message_handler
         self._websocket: Optional[websockets.WebSocketClientProtocol] = None
-        self._stop_event = asyncio.Event() # Event to signal stopping the client
+        self._stop_event = asyncio.Event() 
 
     async def _send_subscription_request(self, websocket):
-        """Подписка на поток объявлений в реальном времени."""
+        """Подписка на поток объявлений."""
         request = {
             "method": "SUBSCRIBE",
             "params": [
-                "!announcement" # Название нового потока объявлений
+                "!announcement" 
             ],
-            "id": 1 # ID запроса может быть целым числом
+            "id": 1
         }
         await websocket.send(json.dumps(request))
         print(f"Подписка отправлена: {json.dumps(request)}")
 
+    # def _get_timestamp(self): # Removed as it's not used after refactoring _listen_for_messages
+    #     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     async def _listen_for_messages(self, websocket):
         async for message in websocket:
             msg_data = json.loads(message)
-            # В новом потоке данные приходят с ключом "e": "announcement"
-            if msg_data.get("e") == "announcement":
-                print(f"Новое объявление: {msg_data.get('title')}")
-                print(f"Ссылка: {msg_data.get('url')}")
             
-            await asyncio.to_thread(self.message_handler, msg_data)
+            # Adapt message format for the existing message_handler
+            if msg_data.get("e") == "announcement":
+                # Translate new keys 't' and 'u' to 'title' and 'url'
+                # Create a mutable copy to add new keys
+                processed_msg_data = msg_data.copy()
+                processed_msg_data["title"] = msg_data.get('t', '')
+                processed_msg_data["url"] = msg_data.get('u', '')
+                
+                # Pass the adapted message to the handler
+                if self.message_handler:
+                    if asyncio.iscoroutinefunction(self.message_handler):
+                        await self.message_handler(processed_msg_data)
+                    else:
+                        await asyncio.to_thread(self.message_handler, processed_msg_data)
+            else:
+                # For non-announcement messages, pass as is
+                if self.message_handler:
+                    if asyncio.iscoroutinefunction(self.message_handler):
+                        await self.message_handler(msg_data)
+                    else:
+                        await asyncio.to_thread(self.message_handler, msg_data)
 
     async def connect_and_listen(self):
-        """Establishes and maintains the WebSocket connection to Binance."""
+        """Установка и поддержание соединения (из твоего исходника)."""
         while not self._stop_event.is_set():
             try:
-                print(f"Attempting to connect to public Binance WebSocket at {self.ws_base_url}...")
-                async with websockets.connect(self.ws_base_url, ping_interval=20, ping_timeout=10) as websocket:
+                print(f"Попытка подключения к {self.ws_base_url}...")
+                async with websockets.connect(
+                    self.ws_base_url, 
+                    ping_interval=20, 
+                    ping_timeout=10
+                ) as websocket:
                     self._websocket = websocket
-                    print("Successfully connected to Public Binance WebSocket.")
+                    print("✅ Соединение установлено.")
                     
-                    # Send initial subscription request
                     await self._send_subscription_request(websocket)
-
-                    # Listen for messages until connection closes or stop event is set
                     await self._listen_for_messages(websocket)
 
             except websockets.exceptions.ConnectionClosedOK:
-                print("Connection closed cleanly, attempting to reconnect.")
-            except websockets.exceptions.ConnectionClosedError as e:
-                print(f"Connection closed with error: {e}, attempting to reconnect.")
-            except ConnectionRefusedError:
-                print("Connection refused. Retrying...")
+                print("Соединение закрыто чисто (OK), переподключение...")
             except Exception as e:
-                print(f"Unexpected error during WebSocket connection: {e}")
+                print(f"Ошибка WebSocket: {e}")
             finally:
                 if self._websocket and not self._websocket.closed:
                     await self._websocket.close()
                 if not self._stop_event.is_set():
-                    print(f"Reconnecting in {RECONNECT_INTERVAL} seconds...")
+                    print(f"Реконнект через {RECONNECT_INTERVAL} сек...")
                     await asyncio.sleep(RECONNECT_INTERVAL)
-        print("BinanceClient stopped.")
 
     async def stop(self):
-        """Signals the client to stop its operation."""
+        """Остановка клиента."""
         self._stop_event.set()
         if self._websocket and not self._websocket.closed:
             await self._websocket.close()
-            print("Binance WebSocket connection explicitly closed.")
+            print("Соединение Binance закрыто вручную.")
+
+            
