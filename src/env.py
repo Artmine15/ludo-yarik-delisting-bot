@@ -34,4 +34,6 @@ except json.JSONDecodeError:
 BUCKET_NAME = _get_required_env_var("BUCKET_NAME")
 AWS_ACCESS_KEY_ID = _get_required_env_var("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = _get_required_env_var("AWS_SECRET_ACCESS_KEY")
-S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "https://storage.yandexcloud.net")
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "https://storage.yandexcloud.net") # Revert to optional with default
+
+# BINANCE_API_KEY and BINANCE_SECRET_KEY are removed as per user's request
