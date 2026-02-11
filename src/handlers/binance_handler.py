@@ -12,22 +12,19 @@ def process_binance_websocket_message(message: dict):
     # output_sender = OutputMessageSender()
     # if message.get("e") == "announcement":
     #     title = message.get("title", "No Title")
-    #     asyncio.run(output_sender.send_telegram_message(f"Binance Announcement: {title}"))
+    #     # Note: send_telegram_message is now synchronous. If it were async,
+    #     # this would require a different pattern (e.g., asyncio.create_task)
+    #     output_sender.send_telegram_message(f"Binance Announcement: {title}")
 
 
-def start_binance_websocket_listener():
+async def start_binance_websocket_listener(client_instance: BinanceClient):
     """
-    Main entry point to start the Binance WebSocket client.
-    This function should be called to run the WebSocket listener as a long-running process.
+    Starts the Binance WebSocket client's connection and listening loop.
+    This function is intended to be run as an asyncio task within a larger application.
     """
-    print("Initializing Binance WebSocket client...")
-    # Instantiate BinanceClient with our message processing function
-    binance_client = BinanceClient(message_handler=process_binance_websocket_message)
-    
-    # Run the client's connection and listening loop
-    # asyncio.run() manages the event loop for us
-    asyncio.run(binance_client.connect_and_listen())
+    print("Binance WebSocket listener task started.")
+    await client_instance.connect_and_listen()
+    print("Binance WebSocket listener task stopped.")
 
-# This block allows the script to be run directly for testing/deployment
-if __name__ == "__main__":
-    start_binance_websocket_listener()
+# The _binance_client instance will be created and managed by the main FastAPI app.
+# The `if __name__ == "__main__"` block is removed, as FastAPI will manage execution.
