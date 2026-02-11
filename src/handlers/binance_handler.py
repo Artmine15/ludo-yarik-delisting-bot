@@ -2,7 +2,7 @@ import asyncio
 from src.repositories.binance.binance_client import BinanceClient
 from src.bot.output_message_sender import OutputMessageSender
 from src.utils.binance.binance_parser import parse_announcement_title
-from src.utils.output_message_formatter import format_message # Renamed format_delisting_message
+from src.utils.output_message_formatter import format_delisting_message
 
 # Define delisting keywords
 DELISTING_KEYWORDS = ["delist", "removal", "remove", "suspend trading", "discontinue"]
@@ -27,9 +27,8 @@ def process_binance_websocket_message(message: dict):
             parsed_data = parse_announcement_title(title)
             
             # Format the message for Telegram
-            formatted_telegram_message = format_message(
+            formatted_telegram_message = format_delisting_message(
                 header="BINANCE",
-                category="DELISTING", # Explicitly set category for the message template
                 tickers=parsed_data.get("tickers"),
                 date=parsed_data.get("date"),
                 time=parsed_data.get("time"),
