@@ -10,10 +10,10 @@ def format_delisting_message(
     """
     Formats the delisting message for Telegram in HTML.
     Args:
-        header: The main header for the announcement (e.g., "Bybit").
-        tickers: A list of ticker symbols (e.g., ["OM", "MANTRA"]).
-        date: The date of the delisting.
-        time: The time of the delisting.
+        header: The main header for the announcement (e.g., "Binance", "Bybit").
+        tickers: A list of ticker symbols (e.g., ["TKN"]).
+        date: The date of the event.
+        time: The time of the event.
         announcement_url: The URL to the original announcement.
     Returns:
         A formatted HTML string for Telegram.
